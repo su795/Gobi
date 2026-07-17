@@ -275,20 +275,60 @@ else:
     # =========================================================================
     # [TAB 4] 📑 모노파동 상세 로그
     # =========================================================================
+
+    # with tab_logs:
+    #     st.subheader("📑 개별 모노파동(Monowave) 및 되돌림 비율(Rule 1~7) 로그")
+    #     log_data = []
+    #     for w in monowaves:
+    #         log_data.append({
+    #             "Wave #": f"Wave {w.index:02d}",
+    #             "방향": "▲ 상승" if w.direction == 1 else "▼ 하락",
+    #             "시작 일시": w.start_time.strftime('%Y-%m-%d %H:%M'),
+    #             "종료 일시": w.end_time.strftime('%Y-%m-%d %H:%M'),
+    #             "길이": round(w.price_length, 2),
+    #             "m1 되돌림": f"{w.retracement_ratio*100:.1f}%",
+    #             "구조 기호": ", ".join(w.structure_labels) if w.structure_labels else "[-] "
+    #         })
+    #     st.dataframe(pd.DataFrame(log_data), use_container_width=True, hide_index=True)
+    # [TAB 4] 모노파동 상세 로그 (안전한 datetime 변환 적용)
     with tab_logs:
-        st.subheader("📑 개별 모노파동(Monowave) 및 되돌림 비율(Rule 1~7) 로그")
+        st.subheader("📑 개별 모노파동(Monowave) 로그")
         log_data = []
         for w in monowaves:
+            # 시간 포맷 오류 방지를 위한 강제 변환
+            st_time = pd.to_datetime(w.start_time).strftime('%Y-%m-%d %H:%M')
+            en_time = pd.to_datetime(w.end_time).strftime('%Y-%m-%d %H:%M')
+            
             log_data.append({
                 "Wave #": f"Wave {w.index:02d}",
-                "방향": "▲ 상승" if w.direction == 1 else "▼ 하락",
-                "시작 일시": w.start_time.strftime('%Y-%m-%d %H:%M'),
-                "종료 일시": w.end_time.strftime('%Y-%m-%d %H:%M'),
+                "방향": "▲" if w.direction == 1 else "▼",
+                "시작": st_time,
+                "종료": en_time,
                 "길이": round(w.price_length, 2),
-                "m1 되돌림": f"{w.retracement_ratio*100:.1f}%",
-                "구조 기호": ", ".join(w.structure_labels) if w.structure_labels else "[-] "
+                "기호": ", ".join(w.structure_labels) if w.structure_labels else "[-] "
             })
         st.dataframe(pd.DataFrame(log_data), use_container_width=True, hide_index=True)
+
+# [TAB 2] 트레이딩뷰 스타일 차트 시각화 강화
+    with tab_chart:
+        vis = NeoWaveVisualizer(df, monowaves)
+        fig = vis.create_chart(f"NeoWave Analysis — {symbol}")
+        
+        # 파동 기호 시각적 배치 (트레이딩뷰 스타일)
+        for w in monowaves:
+            mid_price = (w.start_price + w.end_price) / 2
+            # 기호가 있으면 차트에 텍스트로 추가
+            label = ", ".join(w.structure_labels) if w.structure_labels else ""
+            if label:
+                fig.add_annotation(
+                    x=w.end_time, y=w.end_price,
+                    text=label,
+                    showarrow=True, arrowhead=1, ax=0, ay=-30,
+                    font=dict(color="yellow", size=10),
+                    bgcolor="black"
+                )
+        
+        st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
 st.caption("⚡ Powered by Glenn Neely's NeoWave Algorithmic Engine v7.0 | Designed with Streamlit & Plotly in VS Code")

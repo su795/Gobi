@@ -5,20 +5,45 @@ class NeoWaveVisualizer:
     """
     글렌 닐리의 네오웨이브 분석 결과를 Plotly를 활용해 시각화하는 클래스
     """
-    def __init__(self, df: pd.DataFrame, monowaves: list):
+    # def __init__(self, df: pd.DataFrame, monowaves: list):
+    #     self.df = df
+    #     self.monowaves = monowaves
+    #     self.fig = go.Figure()
+
+    # def create_chart(self, title="Glenn Neely's NeoWave Analysis Chart"):
+    #     # 1. 원본 캔들/종가 차트 배경 (연한 회색 선)
+    #     self.fig.add_trace(go.Scatter(
+    #         x=self.df['Date'],
+    #         y=self.df['Close'],
+    #         mode='lines',
+    #         name='Original Price (Close)',
+    #         line=dict(color='rgba(200, 200, 200, 0.4)', width=1)
+    #     ))
+    def __init__(self, df, monowaves):
         self.df = df
         self.monowaves = monowaves
-        self.fig = go.Figure()
+        self.fig = None
 
-    def create_chart(self, title="Glenn Neely's NeoWave Analysis Chart"):
-        # 1. 원본 캔들/종가 차트 배경 (연한 회색 선)
-        self.fig.add_trace(go.Scatter(
-            x=self.df['Date'],
-            y=self.df['Close'],
-            mode='lines',
-            name='Original Price (Close)',
-            line=dict(color='rgba(200, 200, 200, 0.4)', width=1)
-        ))
+    def create_chart(self, title):
+        fig = go.Figure()
+        # 캔들스틱 추가
+        fig.add_trace(go.Candlestick(x=self.df['Date'], open=self.df['Open'], 
+                                     high=self.df['High'], low=self.df['Low'], close=self.df['Close'],
+                                     name='Market Data'))
+        
+        # 모노파동 라인 추가
+        wave_x = []
+        wave_y = []
+        for w in self.monowaves:
+            wave_x.extend([w.start_time, w.end_time])
+            wave_y.extend([w.start_price, w.end_price])
+            
+        fig.add_trace(go.Scatter(x=wave_x, y=wave_y, mode='lines+markers', 
+                                 line=dict(color='cyan', width=2), name='NeoWave Path'))
+        
+        fig.update_layout(title=title, template='plotly_dark', xaxis_rangeslider_visible=False, height=600)
+        self.fig = fig
+        return fig
 
         # 2. 모노파동(Monowave) 연결 선 및 마커 (진한 파란색)
         wave_dates = [self.monowaves[0].start_time] + [w.end_time for w in self.monowaves]
