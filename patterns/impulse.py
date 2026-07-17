@@ -1,5 +1,5 @@
 import numpy as np
-import pandas as pd  # 💡 [핵심 해결] NameError 방지를 위해 pandas를 명시적으로 임포트!
+import pandas as pd
 
 class ImpulseWaveValidator:
     """
@@ -44,13 +44,20 @@ class ImpulseWaveValidator:
             self.reasons.append("4파가 3파 길이의 100% 이상을 되돌렸습니다.")
             return False
 
+        # 💡 [핵심 해결] Monowave 객체에는 high_price/low_price 대신 start_price와 end_price가 있습니다!
+        # 단방향 파동이므로 시작점과 끝점 중 큰 값이 고점, 작은 값이 저점이 됩니다.
+        w1_high = max(w1.start_price, w1.end_price)
+        w1_low = min(w1.start_price, w1.end_price)
+        w4_high = max(w4.start_price, w4.end_price)
+        w4_low = min(w4.start_price, w4.end_price)
+
         # 터미널 충격파(Terminal Impulse) vs 일반 충격파(Trending Impulse) 구분
         is_overlap = False
         if w1.direction == 1:  # 상승 충격파
-            if w4.low_price <= w1.high_price:
+            if w4_low <= w1_high:
                 is_overlap = True
         else:                  # 하락 충격파
-            if w4.high_price >= w1.low_price:
+            if w4_high >= w1_low:
                 is_overlap = True
 
         if is_overlap:
@@ -58,21 +65,18 @@ class ImpulseWaveValidator:
         else:
             self.impulse_type = "Trending Impulse Wave (일반 추세 충격파)"
 
-        # --- 5. 💡 [오류 해결 부분] 2파와 4파의 교대의 법칙 (시간/가격 길이) ---
+        # --- 5. 2파와 4파의 교대의 법칙 (시간/가격 길이) ---
         try:
-            # 타임델타 연산 오류 방지를 위한 초(Seconds) 단위 변환 안전 로직
             w2_time = w2.time_length.total_seconds() if hasattr(w2.time_length, 'total_seconds') else float(w2.time_length)
             w4_time = w4.time_length.total_seconds() if hasattr(w4.time_length, 'total_seconds') else float(w4.time_length)
             
             time_diff_ratio = abs(w2_time - w4_time) / max(w2_time, w4_time, 1.0)
             price_diff_ratio = abs(w2.price_length - w4.price_length) / max(w2.price_length, w4.price_length, 1e-5)
 
-            # 시간이나 가격 중 하나는 최소 30% 이상 모양이나 크기가 달라야 교대의 법칙 성립
             if time_diff_ratio < 0.2 and price_diff_ratio < 0.2:
                 self.reasons.append("2파와 4파 간의 교대의 법칙(시간 및 가격 길이의 차별성)이 부족합니다.")
                 return False
         except Exception:
-            # 시간 연산에서 예외가 발생하더라도 전체 알고리즘이 멈추지 않고 가격 교대 법칙으로 대체 검증
             if abs(w2.price_length - w4.price_length) / max(w2.price_length, w4.price_length, 1e-5) < 0.2:
                 self.reasons.append("2파와 4파 간의 가격 교대의 법칙이 부족합니다.")
                 return False
