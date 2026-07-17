@@ -30,15 +30,43 @@ from patterns.impulse import ImpulseWaveValidator
 from patterns.corrective import CorrectiveWaveValidator
 from patterns.confirmation import PostPatternConfirmation
 
-# --- 2. 데이터 로드 함수 (바이낸스 ccxt & 야후 파이낸스 yfinance 연동) ---
+# --- 2. 데이터 로드 함수 (글로벌 거래소 자동 우회 및 yfinance 연동) ---
 @st.cache_data(ttl=180)
 def fetch_live_data(symbol="BTC/USDT", timeframe="4h", limit=150):
     try:
-        if "/" in symbol:  # 암호화폐 (CCXT 바이낸스)
-            exchange = ccxt.binance()
-            ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
-            df = pd.DataFrame(ohlcv, columns=['Date', 'Open', 'High', 'Low', 'Close', 'Volume'])
-            df['Date'] = pd.to_datetime(df['Date'], unit='ms')
+        if "/" in symbol:  # 암호화폐 (CCXT 연동)
+            # 💡 [핵심 해결법]: 클라우드 IP 차단(451 Error) 대비 다중 거래소 우회 리스트!
+            # 바이낸스가 차단되면 -> OKX -> Bybit -> Kraken 순서로 자동 우회하여 데이터를 받아옵니다.
+            exchanges_to_try = [
+                ccxt.binance(),
+                ccxt.okx(),
+                ccxt.bybit(),
+                ccxt.kraken()
+            ]
+            
+            df = pd.DataFrame()
+            for ex in exchanges_to_try:
+                try:
+                    ohlcv = ex.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+                    df = pd.DataFrame(ohlcv, columns=['Date', 'Open', 'High', 'Low', 'Close', 'Volume'])
+                    df['Date'] = pd.to_datetime(df['Date'], unit='ms')
+                    if not df.empty:
+                        break # 데이터를 성공적으로 가져왔다면 루프 종료!
+                except Exception:
+                    continue # 차단이나 오류 발생 시 다음 거래소로 즉시 우회
+            
+            # 모든 CCXT 거래소가 막혔을 경우 최후의 방어선: yfinance(야후 파이낸스)로 자동 변환 페치
+            if df.empty:
+                yf_symbol = symbol.replace("/", "-").replace("USDT", "USD") # 예: BTC-USD
+                yf_interval = "1d" if timeframe == "1d" else "1h"
+                df = yf.download(yf_symbol, period="3mo", interval=yf_interval, progress=False)
+                df = df.reset_index()
+                if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+                df.rename(columns={'index': 'Date', 'Datetime': 'Date'}, inplace=True)
+                df = df.tail(limit)
+                
+            return df
+
         else:              # 미국/한국 주식 및 지수 (yfinance)
             yf_interval = "1d" if timeframe == "1d" else "1h"
             df = yf.download(symbol, period="3mo", interval=yf_interval, progress=False)
@@ -47,7 +75,8 @@ def fetch_live_data(symbol="BTC/USDT", timeframe="4h", limit=150):
                 df.columns = df.columns.get_level_values(0)
             df.rename(columns={'index': 'Date', 'Datetime': 'Date'}, inplace=True)
             df = df.tail(limit)
-        return df
+            return df
+            
     except Exception as e:
         st.error(f"데이터를 불러오는 중 오류가 발생했습니다: {e}")
         return pd.DataFrame()
