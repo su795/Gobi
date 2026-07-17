@@ -30,23 +30,27 @@ from patterns.impulse import ImpulseWaveValidator
 from patterns.corrective import CorrectiveWaveValidator
 from patterns.confirmation import PostPatternConfirmation
 
-# --- 2. 데이터 로드 함수 (글로벌 거래소 자동 우회 및 yfinance 연동) ---
-# --- 수정된 데이터 로드 함수 (바이낸스 선물 BTC/USDT 대응) ---
+# --- 2. 데이터 로드 함수 (클라우드 차단 원천 봉쇄) ---
 @st.cache_data(ttl=180)
 def fetch_live_data(symbol="BTC/USDT", timeframe="4h", limit=150):
     try:
-        if "/" in symbol:
-            # 선물 거래소 설정
-            exchange = ccxt.binance({
-                'options': {'defaultType': 'future'} # [핵심] 바이낸스 선물 시장 접속
-            })
-            ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
-            df = pd.DataFrame(ohlcv, columns=['Date', 'Open', 'High', 'Low', 'Close', 'Volume'])
-            df['Date'] = pd.to_datetime(df['Date'], unit='ms')
-            return df
-        else:
-            # 주식/지수용 코드... (기존과 동일)
-            return yf.download(symbol, period="3mo", interval="1h", progress=False).reset_index().tail(limit)
+        # 무조건 yfinance를 사용하여 데이터를 가져옵니다 (IP 차단 문제 없음)
+        # 바이낸스 심볼 예: "BTC/USDT" -> "BTC-USD"
+        yf_symbol = symbol.replace("/", "-").replace("USDT", "USD")
+        
+        # timeframe 매핑
+        interval = "1h" if timeframe in ["1h", "4h"] else "1d"
+        
+        df = yf.download(yf_symbol, period="3mo", interval=interval, progress=False)
+        df = df.reset_index()
+        if isinstance(df.columns, pd.MultiIndex): 
+            df.columns = df.columns.get_level_values(0)
+        
+        # 컬럼 이름 맞추기
+        if 'Datetime' in df.columns: df.rename(columns={'Datetime': 'Date'}, inplace=True)
+        elif 'index' in df.columns: df.rename(columns={'index': 'Date'}, inplace=True)
+        
+        return df.tail(limit)
     except Exception as e:
         st.error(f"데이터 로드 실패: {e}")
         return pd.DataFrame()
@@ -100,13 +104,18 @@ st.sidebar.image("https://img.icons8.com/fluency/96/bullish.png", width=70)
 st.sidebar.title("📈 NeoWave AI Controls")
 st.sidebar.markdown("---")
 
-asset_type = st.sidebar.radio("자산군 선택", ["암호화폐 (Binance)", "미국/한국 주식 (yfinance)"])
-if asset_type == "암호화폐 (Binance)":
-    symbol = st.sidebar.selectbox("종목 선택", ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "BNB/USDT"])
-    timeframe = st.sidebar.selectbox("타임프레임", ["1h", "4h", "1d", "1w"], index=1)
-else:
-    symbol = st.sidebar.selectbox("종목 선택", ["QQQ", "SPY", "NVDA", "TSLA", "AAPL", "005930.KS"])
-    timeframe = st.sidebar.selectbox("타임프레임", ["1h", "1d"], index=1)
+# asset_type = st.sidebar.radio("자산군 선택", ["암호화폐 (Binance)", "미국/한국 주식 (yfinance)"])
+# if asset_type == "암호화폐 (Binance)":
+#     symbol = st.sidebar.selectbox("종목 선택", ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "BNB/USDT"])
+#     timeframe = st.sidebar.selectbox("타임프레임", ["1h", "4h", "1d", "1w"], index=1)
+# else:
+#     symbol = st.sidebar.selectbox("종목 선택", ["QQQ", "SPY", "NVDA", "TSLA", "AAPL", "005930.KS"])
+#     timeframe = st.sidebar.selectbox("타임프레임", ["1h", "1d"], index=1)
+
+asset_type = st.sidebar.radio("자산군 선택", ["금융 데이터 (Yahoo Finance)"])
+symbol = st.sidebar.selectbox("종목 선택", ["BTC-USD", "ETH-USD", "QQQ", "SPY", "NVDA", "TSLA"])
+timeframe = st.sidebar.selectbox("타임프레임", ["1h", "1d"], index=0)
+
 
 limit = st.sidebar.slider("캔들 수 (Limit)", min_value=80, max_value=300, value=150, step=10)
 show_labels = st.sidebar.checkbox("차트에 모노파동 기호(:3, :5 등) 표시", value=True)
